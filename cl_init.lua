@@ -1,4 +1,6 @@
 include( 'shared.lua' )
+GLOBAL_ActionPanels = GLOBAL_ActionPanels or {}
+GLOBAL_EndTurnBtn = GLOBAL_EndTurnBtn or nil
 -------------------------------------------------------------------------------------------------------------------------
 -- function for when the server sends a specific character data to the client:
 net.Receive("SendCharacterStats", function()
@@ -47,6 +49,17 @@ end)
 
 end)
 
+-- Returns all NPCs owned by the given player
+local function GetOwnedNPCs(ply)
+    local out = {}
+    for _, ent in ipairs(ents.GetAll()) do
+        if ent:IsNPC() and ent:GetOwner() == ply then
+            table.insert(out, ent)
+        end
+    end
+    return out
+end
+
 
 
 net.Receive("StartPturn", function()
@@ -54,6 +67,10 @@ net.Receive("StartPturn", function()
     local localPly = LocalPlayer()
 
     if curPlayer ~= localPly then return end
+
+    if IsValid(GLOBAL_EndTurnBtn) then
+        GLOBAL_EndTurnBtn:Remove()
+    end
 
     -- Clear old panels if they exist
     if IsValid(GLOBAL_ActionPanels) then
@@ -64,11 +81,15 @@ net.Receive("StartPturn", function()
 
     GLOBAL_ActionPanels = {}
 
+    local npcs = GetOwnedNPCs(localPly)
+
     -- Create up to 4 action panels
-    for i = 1, 4 do
+    for i = 1, math.min(4, #npcs) do
+        local charName = npcs[i]:GetNWString("CharacterName", "Character" .. i)
         local panel = vgui.Create("DFrame")
         panel:SetSize(140, 100)
-        panel:SetTitle("Character " .. i)
+        panel:SetTitle(charName)
+        panel.CharacterName = charName
         panel:SetDraggable(false)
         panel:ShowCloseButton(false)
         panel:SetPos(550, 100 + (i - 1) * 210)
@@ -126,6 +147,17 @@ net.Receive("StartPturn", function()
         end
 
         table.insert(GLOBAL_ActionPanels, panel)
+    end
+
+    GLOBAL_EndTurnBtn = vgui.Create("DButton")
+    GLOBAL_EndTurnBtn:SetSize(120, 40)
+    GLOBAL_EndTurnBtn:SetText("End Turn")
+    GLOBAL_EndTurnBtn:SetPos(20, ScrH() - 60)
+    GLOBAL_EndTurnBtn.DoClick = function()
+        net.Start("EndTurn")
+        net.SendToServer()
+        if IsValid(GLOBAL_EndTurnBtn) then GLOBAL_EndTurnBtn:Remove() end
+        CloseCharacterAttackPanels()
     end
 end)
 
@@ -192,6 +224,7 @@ function ShowEnemySelectionPanel(abilityName, enemies, originatingPanel)
     function list:OnRowSelected(rowIndex, row)
         local enemyName = row:GetValue(1)
         net.Start("PerformAttack")
+            net.WriteString(originatingPanel and originatingPanel.CharacterName or "")
             net.WriteString(enemyName)
             net.WriteString(abilityName)
         net.SendToServer()

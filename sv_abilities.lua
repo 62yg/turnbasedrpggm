@@ -51,6 +51,7 @@ end)
 
 -- Apply attack to enemy NPC
 net.Receive("PerformAttack", function(len, ply)
+    local attackerName = net.ReadString()
     local enemyName = net.ReadString()
     local abilityName = net.ReadString()
 
@@ -70,6 +71,10 @@ net.Receive("PerformAttack", function(len, ply)
         if ability.effect then
             npc:SetNWString("CurrentEffect", ability.effect)
         end
+
+        -- Inform all players of the attack
+        local msg = string.format("%s used %s on %s for %d damage", attackerName, abilityName, enemyName, math.abs(damageAmount))
+        PrintMessage(HUD_PRINTTALK, msg)
     else
         print("Could not find valid NPC for enemy name:", enemyName)
     end
