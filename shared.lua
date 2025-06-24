@@ -111,9 +111,9 @@ end
 	end
 	
 
-	 util.AddNetworkString("StartBattle")
-     net.Start("StartBattle")
-     net.Send(Entity(1))
+        util.AddNetworkString("StartBattle")
+    net.Start("StartBattle")
+    net.Send({player1, player2})
 	
 end -- end of function
 

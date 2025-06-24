@@ -143,32 +143,36 @@ net.Receive("SendAbilitiesToClient", function()
 
     ShowAttackPanel(abilities)
 end)
-function ShowEnemySelectionPanel(abilityName, enemies, originatingPanel)
+
+-- Displays a list of abilities and lets the player choose one
+function ShowAttackPanel(abilities, originatingPanel)
     local frame = vgui.Create("DFrame")
-    frame:SetSize(300, 400)
-    frame:SetTitle("Select Enemy to Attack")
+    frame:SetSize(300, 200)
+    frame:SetTitle("Select Attack")
     frame:Center()
     frame:MakePopup()
 
     local list = vgui.Create("DListView", frame)
     list:Dock(FILL)
-    list:AddColumn("Enemy Name")
+    list:AddColumn("Ability")
+    list:AddColumn("Damage")
 
-    for _, enemyName in pairs(enemies) do
-        list:AddLine(enemyName)
+    for _, ability in ipairs(abilities) do
+        list:AddLine(ability.name, ability.damage)
     end
 
     function list:OnRowSelected(rowIndex, row)
-        local enemyName = row:GetValue(1)
-        net.Start("PerformAttack")
-            net.WriteString(enemyName)
+        local abilityName = row:GetValue(1)
+
+        net.Start("RequestAttack")
             net.WriteString(abilityName)
         net.SendToServer()
 
-
-
+        CloseCharacterAttackPanels(originatingPanel)
+        frame:Close()
     end
 end
+
 
 function ShowEnemySelectionPanel(abilityName, enemies, originatingPanel)
     local frame = vgui.Create("DFrame")
@@ -221,14 +225,7 @@ end
 
 ------------------------------------------------------------------------------------------------------------------------
 
-include( "Scoreboard/admin_buttons.lua" )
-include( "Scoreboard/cl_tooltips.lua" )
-include( "Scoreboard/player_frame.lua" )
-include( "Scoreboard/player_infocard.lua" )
-include( "Scoreboard/player_row.lua" )
-include( "Scoreboard/scoreboard.lua" )
-include( "Scoreboard/vote_button.lua" )
-include( "Scoreboard/the_scoreboard.lua" )
+
 
 
 local PLAYER = FindMetaTable("Player")
