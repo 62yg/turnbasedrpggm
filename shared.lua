@@ -132,7 +132,6 @@ function startTurn(curPlayer, opponent)
     OpponentPlayer = opponent
 
     net.Start("StartPturn")
-    net.WriteEntity(curPlayer)
     net.Send(curPlayer)
 end
 

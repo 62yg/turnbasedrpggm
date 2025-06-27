@@ -63,17 +63,14 @@ end
 
 
 net.Receive("StartPturn", function()
-    local curPlayer = net.ReadEntity()
     local localPly = LocalPlayer()
-
-    if curPlayer ~= localPly then return end
 
     if IsValid(GLOBAL_EndTurnBtn) then
         GLOBAL_EndTurnBtn:Remove()
     end
 
     -- Clear old panels if they exist
-    if IsValid(GLOBAL_ActionPanels) then
+    if GLOBAL_ActionPanels then
         for _, pnl in ipairs(GLOBAL_ActionPanels) do
             if IsValid(pnl) then pnl:Remove() end
         end
@@ -157,6 +154,14 @@ net.Receive("StartPturn", function()
         net.Start("EndTurn")
         net.SendToServer()
         if IsValid(GLOBAL_EndTurnBtn) then GLOBAL_EndTurnBtn:Remove() end
+
+        if GLOBAL_ActionPanels then
+            for _, pnl in ipairs(GLOBAL_ActionPanels) do
+                if IsValid(pnl) then pnl:Remove() end
+            end
+        end
+        GLOBAL_ActionPanels = {}
+
         CloseCharacterAttackPanels()
     end
 end)
