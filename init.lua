@@ -2,15 +2,6 @@ AddCSLuaFile( "shared.lua" )
 AddCSLuaFile( "cl_init.lua" )
 AddCSLuaFile( "sv_abilities.lua" )
  
-AddCSLuaFile( "Scoreboard/the_scoreboard.lua" )
-AddCSLuaFile( "Scoreboard/admin_buttons.lua" )
-AddCSLuaFile( "Scoreboard/cl_tooltips.lua" )
-AddCSLuaFile( "Scoreboard/player_frame.lua" )
-AddCSLuaFile( "Scoreboard/player_infocard.lua" )
-AddCSLuaFile( "Scoreboard/player_row.lua" )
-AddCSLuaFile( "Scoreboard/scoreboard.lua" )
-AddCSLuaFile( "Scoreboard/vote_button.lua" )
-include( "Scoreboard/rating.lua" )
 
 include( 'sv_abilities.lua' )
 include( 'shared.lua' )
@@ -171,9 +162,26 @@ sendCharacterStatsToClient(Entity(1), charID) -- Sends all data for character wi
 
 
  util.AddNetworkString("RequestAbilities")
+util.AddNetworkString("OpenRoasterMenu")
+util.AddNetworkString("SaveRoaster")
 
 net.Receive("RequestAbilities", function(len, ply)
     SendAbilities(ply)
+end)
+
+net.Receive("SaveRoaster", function(len, ply)
+    local count = math.min(net.ReadUInt(8), 4)
+    local ids = {}
+    for i = 1, count do
+        table.insert(ids, net.ReadUInt(32))
+    end
+
+    local steamID = ply:SteamID()
+
+    sql.Query("UPDATE character_stats SET playerRoaster = '' WHERE playerOwned = " .. sql.SQLStr(steamID))
+    for _, id in ipairs(ids) do
+        sql.Query("UPDATE character_stats SET playerRoaster = " .. sql.SQLStr(steamID) .. " WHERE id = " .. tonumber(id))
+    end
 end)
 
 
@@ -254,9 +262,22 @@ end
 
 
 
-function GM:ShowHelp( ply )                  --this is the "F1" menu
-	umsg.Start("call_vgui", ply)         -- this makes the F1 menu bring up a user interface
-	umsg.End()                           
+function GM:ShowHelp( ply )
+    local steamID = ply:SteamID()
+    local rows = sql.Query("SELECT id, name, playerRoaster FROM character_stats WHERE playerOwned = " .. sql.SQLStr(steamID))
+
+    net.Start("OpenRoasterMenu")
+        if rows then
+            net.WriteUInt(#rows, 8)
+            for _, row in ipairs(rows) do
+                net.WriteUInt(tonumber(row.id) or 0, 32)
+                net.WriteString(row.name or "")
+                net.WriteBool(row.playerRoaster == steamID)
+            end
+        else
+            net.WriteUInt(0, 8)
+        end
+    net.Send(ply)
 end
 
 function GM:ShowTeam( ply )

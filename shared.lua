@@ -9,6 +9,10 @@ team.SetUp ( 11, "Black", Color ( 0, 0, 0 ) )
 
 if SERVER then
 
+-- Track which player currently has the turn
+CurrentTurnPlayer = nil
+OpponentPlayer = nil
+
 
 function fightingtime(player1, player2)
 
@@ -111,22 +115,38 @@ end
 	end
 	
 
-	 util.AddNetworkString("StartBattle")
-     net.Start("StartBattle")
-     net.Send(Entity(1))
+        util.AddNetworkString("StartBattle")
+    net.Start("StartBattle")
+    net.Send({player1, player2})
 	
 end -- end of function
 
 -- Server-side
 util.AddNetworkString("StartPturn")
+util.AddNetworkString("EndTurn")
 
 function startTurn(curPlayer, opponent)
     if not IsValid(curPlayer) then return end
 
+    CurrentTurnPlayer = curPlayer
+    OpponentPlayer = opponent
+
     net.Start("StartPturn")
-    net.WriteEntity(curPlayer)
     net.Send(curPlayer)
 end
+
+-- Swap whose turn it is and notify the next player
+local function advanceTurn()
+    if not IsValid(OpponentPlayer) then return end
+    local newCurrent = OpponentPlayer
+    OpponentPlayer = CurrentTurnPlayer
+    startTurn(newCurrent, OpponentPlayer)
+end
+
+net.Receive("EndTurn", function(len, ply)
+    if ply ~= CurrentTurnPlayer then return end
+    advanceTurn()
+end)
 
 
 end -- end of if SERVER statement

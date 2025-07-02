@@ -1,4 +1,6 @@
 include( 'shared.lua' )
+GLOBAL_ActionPanels = GLOBAL_ActionPanels or {}
+GLOBAL_EndTurnBtn = GLOBAL_EndTurnBtn or nil
 -------------------------------------------------------------------------------------------------------------------------
 -- function for when the server sends a specific character data to the client:
 net.Receive("SendCharacterStats", function()
@@ -47,16 +49,28 @@ end)
 
 end)
 
+-- Returns all NPCs owned by the given player
+local function GetOwnedNPCs(ply)
+    local out = {}
+    for _, ent in ipairs(ents.GetAll()) do
+        if ent:IsNPC() and ent:GetOwner() == ply then
+            table.insert(out, ent)
+        end
+    end
+    return out
+end
+
 
 
 net.Receive("StartPturn", function()
-    local curPlayer = net.ReadEntity()
     local localPly = LocalPlayer()
 
-    if curPlayer ~= localPly then return end
+    if IsValid(GLOBAL_EndTurnBtn) then
+        GLOBAL_EndTurnBtn:Remove()
+    end
 
     -- Clear old panels if they exist
-    if IsValid(GLOBAL_ActionPanels) then
+    if GLOBAL_ActionPanels then
         for _, pnl in ipairs(GLOBAL_ActionPanels) do
             if IsValid(pnl) then pnl:Remove() end
         end
@@ -64,11 +78,15 @@ net.Receive("StartPturn", function()
 
     GLOBAL_ActionPanels = {}
 
+    local npcs = GetOwnedNPCs(localPly)
+
     -- Create up to 4 action panels
-    for i = 1, 4 do
+    for i = 1, math.min(4, #npcs) do
+        local charName = npcs[i]:GetNWString("CharacterName", "Character" .. i)
         local panel = vgui.Create("DFrame")
         panel:SetSize(140, 100)
-        panel:SetTitle("Character " .. i)
+        panel:SetTitle(charName)
+        panel.CharacterName = charName
         panel:SetDraggable(false)
         panel:ShowCloseButton(false)
         panel:SetPos(550, 100 + (i - 1) * 210)
@@ -127,6 +145,25 @@ net.Receive("StartPturn", function()
 
         table.insert(GLOBAL_ActionPanels, panel)
     end
+
+    GLOBAL_EndTurnBtn = vgui.Create("DButton")
+    GLOBAL_EndTurnBtn:SetSize(120, 40)
+    GLOBAL_EndTurnBtn:SetText("End Turn")
+    GLOBAL_EndTurnBtn:SetPos(20, ScrH() - 60)
+    GLOBAL_EndTurnBtn.DoClick = function()
+        net.Start("EndTurn")
+        net.SendToServer()
+        if IsValid(GLOBAL_EndTurnBtn) then GLOBAL_EndTurnBtn:Remove() end
+
+        if GLOBAL_ActionPanels then
+            for _, pnl in ipairs(GLOBAL_ActionPanels) do
+                if IsValid(pnl) then pnl:Remove() end
+            end
+        end
+        GLOBAL_ActionPanels = {}
+
+        CloseCharacterAttackPanels()
+    end
 end)
 
 
@@ -143,32 +180,36 @@ net.Receive("SendAbilitiesToClient", function()
 
     ShowAttackPanel(abilities)
 end)
-function ShowEnemySelectionPanel(abilityName, enemies, originatingPanel)
+
+-- Displays a list of abilities and lets the player choose one
+function ShowAttackPanel(abilities, originatingPanel)
     local frame = vgui.Create("DFrame")
-    frame:SetSize(300, 400)
-    frame:SetTitle("Select Enemy to Attack")
+    frame:SetSize(300, 200)
+    frame:SetTitle("Select Attack")
     frame:Center()
     frame:MakePopup()
 
     local list = vgui.Create("DListView", frame)
     list:Dock(FILL)
-    list:AddColumn("Enemy Name")
+    list:AddColumn("Ability")
+    list:AddColumn("Damage")
 
-    for _, enemyName in pairs(enemies) do
-        list:AddLine(enemyName)
+    for _, ability in ipairs(abilities) do
+        list:AddLine(ability.name, ability.damage)
     end
 
     function list:OnRowSelected(rowIndex, row)
-        local enemyName = row:GetValue(1)
-        net.Start("PerformAttack")
-            net.WriteString(enemyName)
+        local abilityName = row:GetValue(1)
+
+        net.Start("RequestAttack")
             net.WriteString(abilityName)
         net.SendToServer()
 
-
-
+        CloseCharacterAttackPanels(originatingPanel)
+        frame:Close()
     end
 end
+
 
 function ShowEnemySelectionPanel(abilityName, enemies, originatingPanel)
     local frame = vgui.Create("DFrame")
@@ -188,6 +229,7 @@ function ShowEnemySelectionPanel(abilityName, enemies, originatingPanel)
     function list:OnRowSelected(rowIndex, row)
         local enemyName = row:GetValue(1)
         net.Start("PerformAttack")
+            net.WriteString(originatingPanel and originatingPanel.CharacterName or "")
             net.WriteString(enemyName)
             net.WriteString(abilityName)
         net.SendToServer()
@@ -221,14 +263,7 @@ end
 
 ------------------------------------------------------------------------------------------------------------------------
 
-include( "Scoreboard/admin_buttons.lua" )
-include( "Scoreboard/cl_tooltips.lua" )
-include( "Scoreboard/player_frame.lua" )
-include( "Scoreboard/player_infocard.lua" )
-include( "Scoreboard/player_row.lua" )
-include( "Scoreboard/scoreboard.lua" )
-include( "Scoreboard/vote_button.lua" )
-include( "Scoreboard/the_scoreboard.lua" )
+
 
 
 local PLAYER = FindMetaTable("Player")
@@ -276,5 +311,87 @@ end
    DermaPanel:SetVisible( false )
   end 
 end
- usermessage.Hook( "call_vgui", ShowTeamMenu )
- usermessage.Hook( "call_vgui2", ShowTeamSelect )
+usermessage.Hook( "call_vgui", ShowTeamMenu )
+usermessage.Hook( "call_vgui2", ShowTeamSelect )
+
+-- Receive list of owned characters to display roster selection
+net.Receive("OpenRoasterMenu", function()
+    local count = net.ReadUInt(8)
+    local chars = {}
+    for i = 1, count do
+        chars[i] = {
+            id = net.ReadUInt(32),
+            name = net.ReadString(),
+            selected = net.ReadBool()
+        }
+    end
+    OpenRoasterMenu(chars)
+end)
+
+-- Displays a menu letting the player choose up to 4 characters for their roster
+function OpenRoasterMenu(characters)
+    local frame = vgui.Create("DFrame")
+    frame:SetSize(300, 400)
+    frame:SetTitle("Select Up To 4 Characters")
+    frame:Center()
+    frame:MakePopup()
+
+    local scroll = vgui.Create("DScrollPanel", frame)
+    scroll:Dock(FILL)
+
+    local items = {}
+    local lblCount
+
+    local function updateCount()
+        local c = 0
+        for _, it in ipairs(items) do
+            if it.checkbox:GetChecked() then c = c + 1 end
+        end
+        if lblCount then lblCount:SetText(c .. "/4 Selected") end
+        return c
+    end
+
+    for _, char in ipairs(characters) do
+        local chk = scroll:Add("DCheckBoxLabel")
+        chk:SetText(char.name)
+        chk:SetValue(char.selected and 1 or 0)
+        chk.ID = char.id
+        chk:Dock(TOP)
+        chk:DockMargin(5, 5, 5, 0)
+        chk.OnChange = function(s, val)
+            if val and updateCount() >= 4 then
+                s:SetChecked(false)
+                return
+            end
+            updateCount()
+        end
+        table.insert(items, {checkbox = chk})
+    end
+
+    lblCount = frame:Add("DLabel")
+    lblCount:Dock(BOTTOM)
+    lblCount:DockMargin(5, 0, 5, 0)
+    lblCount:SetText("0/4 Selected")
+
+    local btn = frame:Add("DButton")
+    btn:Dock(BOTTOM)
+    btn:DockMargin(5, 5, 5, 5)
+    btn:SetText("Save")
+    btn.DoClick = function()
+        local selected = {}
+        for _, it in ipairs(items) do
+            if it.checkbox:GetChecked() then
+                table.insert(selected, it.checkbox.ID)
+            end
+        end
+        net.Start("SaveRoaster")
+        net.WriteUInt(#selected, 8)
+        for _, id in ipairs(selected) do
+            net.WriteUInt(id, 32)
+        end
+        net.SendToServer()
+        frame:Close()
+    end
+
+    updateCount()
+end
