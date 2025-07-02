@@ -311,5 +311,87 @@ end
    DermaPanel:SetVisible( false )
   end 
 end
- usermessage.Hook( "call_vgui", ShowTeamMenu )
- usermessage.Hook( "call_vgui2", ShowTeamSelect )
+usermessage.Hook( "call_vgui", ShowTeamMenu )
+usermessage.Hook( "call_vgui2", ShowTeamSelect )
+
+-- Receive list of owned characters to display roster selection
+net.Receive("OpenRoasterMenu", function()
+    local count = net.ReadUInt(8)
+    local chars = {}
+    for i = 1, count do
+        chars[i] = {
+            id = net.ReadUInt(32),
+            name = net.ReadString(),
+            selected = net.ReadBool()
+        }
+    end
+    OpenRoasterMenu(chars)
+end)
+
+-- Displays a menu letting the player choose up to 4 characters for their roster
+function OpenRoasterMenu(characters)
+    local frame = vgui.Create("DFrame")
+    frame:SetSize(300, 400)
+    frame:SetTitle("Select Up To 4 Characters")
+    frame:Center()
+    frame:MakePopup()
+
+    local scroll = vgui.Create("DScrollPanel", frame)
+    scroll:Dock(FILL)
+
+    local items = {}
+    local lblCount
+
+    local function updateCount()
+        local c = 0
+        for _, it in ipairs(items) do
+            if it.checkbox:GetChecked() then c = c + 1 end
+        end
+        if lblCount then lblCount:SetText(c .. "/4 Selected") end
+        return c
+    end
+
+    for _, char in ipairs(characters) do
+        local chk = scroll:Add("DCheckBoxLabel")
+        chk:SetText(char.name)
+        chk:SetValue(char.selected and 1 or 0)
+        chk.ID = char.id
+        chk:Dock(TOP)
+        chk:DockMargin(5, 5, 5, 0)
+        chk.OnChange = function(s, val)
+            if val and updateCount() >= 4 then
+                s:SetChecked(false)
+                return
+            end
+            updateCount()
+        end
+        table.insert(items, {checkbox = chk})
+    end
+
+    lblCount = frame:Add("DLabel")
+    lblCount:Dock(BOTTOM)
+    lblCount:DockMargin(5, 0, 5, 0)
+    lblCount:SetText("0/4 Selected")
+
+    local btn = frame:Add("DButton")
+    btn:Dock(BOTTOM)
+    btn:DockMargin(5, 5, 5, 5)
+    btn:SetText("Save")
+    btn.DoClick = function()
+        local selected = {}
+        for _, it in ipairs(items) do
+            if it.checkbox:GetChecked() then
+                table.insert(selected, it.checkbox.ID)
+            end
+        end
+        net.Start("SaveRoaster")
+        net.WriteUInt(#selected, 8)
+        for _, id in ipairs(selected) do
+            net.WriteUInt(id, 32)
+        end
+        net.SendToServer()
+        frame:Close()
+    end
+
+    updateCount()
+end
